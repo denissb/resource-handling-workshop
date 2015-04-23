@@ -1,0 +1,5 @@
+# Spring Framework Resource Handling Workshop
+
+This feature has been introduced in Spring Framework 4.1 and explained
+in https://spring.io/blog/2014/07/24/spring-framework-4-1-handling-static-web-resources[this blog post].
+
