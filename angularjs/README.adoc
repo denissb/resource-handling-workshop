@@ -1,0 +1,183 @@
+= AngularJS web application
+
+The second part of the workshop will focus on adapting an existing AngularJS application in order to:
+
+* use a more flexible project layout
+* use Spring's Resource Handling features
+
+== Build a webjar from the client module
+
+The client module contains now only the source files of the AngularJS application.
+We need to set up the infrastructure to build a webjar we could then use as a dependency in the server module.
+
+First, configure a maven plugin to automatically install Node.js and run node scripts:
+
+[source,xml]
+.pom.xml
+----
+<plugin>
+  <groupId>com.github.eirslett</groupId>
+  <artifactId>frontend-maven-plugin</artifactId>
+  <version>0.0.23</version>
+  <executions>
+    <execution>
+      <id>install node and npm</id>
+      <goals><goal>install-node-and-npm</goal></goals>
+      <configuration>
+        <nodeVersion>v0.10.38</nodeVersion>
+        <npmVersion>1.4.28</npmVersion>
+      </configuration>
+    </execution>
+    <execution>
+      <id>npm install</id>
+      <goals><goal>npm</goal></goals>
+    </execution>
+  </executions>
+</plugin>
+----
+
+Now, running `mvn package` in the client module will install node, and install node dependencies in the `node_modules`
+folder. We still need to build a proper JAR with all required resources.
+
+For this, we can add a task during during the packaging phase that will copy our `src` and `node_modules` folders
+into `target/classes/static` at build time.
+
+[source,xml]
+.pom.xml
+----
+  <plugin>
+    <artifactId>maven-resources-plugin</artifactId>
+    <version>2.7</version>
+    <configuration>
+      <outputDirectory>${project.build.directory}/classes/static</outputDirectory>
+    </configuration>
+  </plugin>
+</plugins>
+<resources>
+  <resource>
+    <directory>${basedir}</directory>
+    <includes>
+      <include>src/**</include>
+      <include>node_modules/**</include>
+    </includes>
+  </resource>
+</resources>
+----
+
+== Importing this client module in our webapp
+
+Import this module as a maven dependency in our server module.
+
+Now we can prepare a simple ViewController mapping like this:
+
+[source,java]
+.src/main/java/workshop/WebConfig.java
+----
+@Configuration
+public class WebConfig extends WebMvcConfigurerAdapter {
+@Override
+  public void addViewControllers(ViewControllerRegistry registry) {
+    registry.addViewController("/").setViewName("index");
+  }
+}
+----
+
+Run the application.
+
+== Configure cache busting URLs for your resources
+
+For that, we can configure our own resource handler:
+
+* that serves css and js files
+* from a classpath location (our client webjar)
+* and a specific ResourceResolver that will use a `ContentVersionStrategy`
+
+This `ResourceHandler` can now serve resources such as `"http://localhost:8080/src/app-0e05d541f7d557383e937eef3d09a60b.js"`.
+
+[source,java]
+.src/main/java/workshop/WebConfig.java
+----
+@Override
+public void addResourceHandlers(ResourceHandlerRegistry registry) {
+
+  VersionResourceResolver versionResourceResolver = new VersionResourceResolver();
+  versionResourceResolver.addContentVersionStrategy("/**");
+
+  registry.addResourceHandler("/**/*.css", "/**/*.js")
+  .addResourceLocations("classpath:/static/")
+  .resourceChain(false)
+  .addResolver(versionResourceResolver);
+}
+----
+
+But, our template still renders URLs like `"http://localhost:8080/src/app.js"`.
+In order to write those URLs, we can configure a filter:
+
+[source,java]
+.src/main/java/workshop/WebConfig.java
+----
+@Bean
+public ResourceUrlEncodingFilter resourceUrlEncodingFilter() {
+  return new ResourceUrlEncodingFilter();
+}
+----
+
+And update our template so that all URLs look like this:
+
+[source,html]
+.src/main/resources/templates/index.html
+----
+<link rel="stylesheet" th:href="@{/node_modules/todomvc-common/base.css}" />
+
+<!-- ... -->
+
+<script th:src="@{/node_modules/todomvc-common/base.js}"></script>
+<script th:src="@{/node_modules/angular/angular.js}"></script>
+----
+
+== What about resources linked from CSS stylesheets?
+
+Add a simple CSS file with a link to another resource, such as another CSS file or a background image, like:
+
+[source,css]
+.src/main/resources/static/css/main.css
+----
+@import url(/css/base.css);
+----
+
+[source,css]
+.src/main/resources/static/css/base.css
+----
+body #todoapp h1 {
+    text-transform: uppercase;
+    color: green;
+}
+----
+
+And import that CSS file in your main template
+
+[source,html]
+.src/main/resources/templates/index.html
+----
+<link rel="stylesheet" th:href="@{/css/main.css}" />
+----
+
+Spring Framework automatically registered a `CSSLinkResourceTransformer` to update links within
+CSS resources before they're served to clients.
+
+The `main.css` file should contain:
+
+[source,css]
+----
+@import url(/css/base-872ca6a9fdda9e2c1516a84cff5c3bc6.css);
+----
+
+
+== Developer experience
+
+What part of the developer experience could we improve here?
+
+* What about a JavaScript toolchain to optimize the client application?
+* Since the client module is now a JAR dependency, live reloading does not work...
+* Is this strategy working with JavaScript module loaders?
+* What about other templating engines that do not use Servlet Filters to encode URLs?

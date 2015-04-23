@@ -3,3 +3,21 @@
 This feature has been introduced in Spring Framework 4.1 and explained
 in https://spring.io/blog/2014/07/24/spring-framework-4-1-handling-static-web-resources[this blog post].
 
+## Requirements
+
+* Maven 3.2+
+* JDK6+
+* git
+
+Optional:
+
+* Node.js 0.12+ (see https://github.com/creationix/nvm[nvm])
+* gradle 3.2 (see http://gvmtool.net/[gvm])
+
+
+include::traditional/README.adoc[leveloffset=+1]
+
+include::angularjs/README.adoc[leveloffset=+1]
+
+include::es6/README.adoc[leveloffset=+1]
+

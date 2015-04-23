@@ -1,0 +1,6 @@
+build
+*.iml
+node_modules
+src/lib
+dist
+npm-debug.log

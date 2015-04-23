@@ -1,0 +1,461 @@
+= "ES6 ready"  web application
+
+Nowadays web applications are more complex and have their own dependency manager, build toolchain,
+test suite, module loader...
+
+With this project, we will create a JavaScript application with more advanced features, such as:
+
+* a complete build toolchain
+* a module loader ES6 compatible
+* a front-end package manager
+* a templating engine that's not using Servlet infrastructure
+* gradle instead of maven
+
+== Install Gradle
+
+Run `./gradlew build` from the command line to automatically install gradle and the project dependencies.
+
+Simply import this project as a Gradle project in your favorite IDE.
+
+== Set up the client module
+
+First, we need to create a `package.json` file that installs http://jspm.io/[jspm] as front-end package manager.
+
+We also want to following front-end dependencies:
+
+* twitter bootstrap
+* jquery
+
+If you have Node.js already installed and you're already familiar with NPM and JSPM,
+you can use it interactively to issue commands like:
+
+[source]
+----
+npm init
+npm install --save jspm
+jspm init
+jspm install jquery
+...
+----
+
+Otherwise copy/paste this file:
+
+[source,json]
+.package.json
+----
+{
+  "private": true,
+  "name": "resources-es6-client",
+  "version": "1.0.0",
+  "dependencies": {
+    "jspm": "^0.15.2"
+  },
+  "scripts": {
+    "prepublish": "jspm install"
+  },
+  "jspm": {
+    "directories": {
+      "baseURL": "src",
+      "packages": "src/lib"
+    },
+    "dependencies": {
+      "bootstrap": "github:twbs/bootstrap@^3.3.4",
+      "jquery": "github:components/jquery@^2.1.3"
+    },
+    "devDependencies": {
+      "traceur": "github:jmcriffey/bower-traceur@0.0.87",
+      "traceur-runtime": "github:jmcriffey/bower-traceur-runtime@0.0.87"
+    }
+  }
+}
+----
+
+The `config.js` file configures the JavaScript module loader we'll use in this project,
+https://github.com/systemjs/systemjs[System.js].
+
+[source,javascript]
+.src/config.js
+----
+System.config({
+  "baseURL": "/",
+  "paths": {
+    "*": "*.js",
+    "github:*": "lib/github/*.js"
+  }
+});
+
+System.config({
+  "map": {
+    "bootstrap": "github:twbs/bootstrap@3.3.4",
+    "jquery": "github:components/jquery@2.1.3",
+    "traceur": "github:jmcriffey/bower-traceur@0.0.87",
+    "traceur-runtime": "github:jmcriffey/bower-traceur-runtime@0.0.87",
+    "github:twbs/bootstrap@3.3.4": {
+      "jquery": "github:components/jquery@2.1.3"
+    }
+  }
+});
+----
+
+Locally running `npm install` should install Node.js dependencies in `node_modules` and front-end dependencies in
+`src/lib`.
+
+== Integrate with Gradle
+
+We'd like this project to run on our CI, so we need to run our JavaScript build as part of our main Gradle build.
+
+First, we can install a gradle plugin that automatically (and locally to your project) installs a Node.js distribution
+and creates
+
+[source,groovy]
+.build.gradle
+----
+plugins {
+    id "com.moowork.node" version "0.9"
+}
+
+apply plugin: 'java'
+apply plugin: 'com.moowork.node'
+
+node {
+    version = '0.12.2'
+    npmVersion = '2.7.4'
+}
+
+
+jar.dependsOn npmInstall
+----
+
+Running `./gradlew :client:build` will install npm+jspm dependencies, but our JAR is still empty.
+
+We need to configure the JAR task to create a webjar:
+
+[source,groovy]
+.client/build.gradle
+----
+//...
+
+jar {
+    from 'src'
+    eachFile { details -> details.path = 'static/' + details.path }
+}
+
+jar.dependsOn npmInstall
+----
+
+And now we can add this client module as a dependency
+
+[source,groovy]
+.server/build.gradle
+----
+dependencies {
+  compile project(':client')
+  //...
+}
+----
+
+We now have a server module that depends on a well structured client module.
+
+
+== Add a HandleBars templating engine
+
+Add the following dependency in the server module
+
+[source,groovy]
+.server/build.gradle
+----
+compile("com.github.jknack:handlebars-springmvc:2.0.0")
+----
+
+And now create a WebConfig that will:
+
+* configure a view for the `"/"` endpoint
+* configure a ViewResolver for the HandlerBars.java templating engine
+
+[source,java]
+.src/main/java/workshop/WebConfig.java
+----
+@Configuration
+public class WebConfig extends WebMvcConfigurerAdapter {
+
+  @Override
+  public void addViewControllers(ViewControllerRegistry registry) {
+    registry.addViewController("/").setViewName("index");
+  }
+
+  @Bean
+  public HandlebarsViewResolver handlebarsViewResolver() {
+    HandlebarsViewResolver resolver = new HandlebarsViewResolver();
+    resolver.setPrefix("classpath:/templates/");
+    resolver.setCache(false);
+    resolver.setFailOnMissingFile(false);
+    return resolver;
+  }
+
+}
+----
+
+Running this application with `./gradlew :server:bootRun` should run an ES6 application!
+
+== Improving the development workflow
+
+Since our client module is a webjar, we need to rebuild it every time something changes...
+Or we can directly load resources from disk at development time, using Spring profiles and resource handling.
+
+Let's update our WebConfig in order to
+
+* Inject the Spring `Environment`, which knows about active profiles
+* Inject the path of the root folder in your project as a property
+* Load static resources directly from the client module in dev mode, or from the webjar in production
+
+
+[source,java]
+.src/main/java/workshop/WebConfig.java
+----
+@Configuration
+public class WebConfig extends WebMvcConfigurerAdapter {
+
+  //...
+
+  @Autowired
+  private Environment env;
+
+  @Value("${resources.projectroot:}")
+  private String projectRoot;
+
+  private String getProjectRootRequired() {
+        Assert.state(this.projectRoot != null, "Please set \"resources.projectRoot\" in application.properties");
+        return this.projectRoot;
+  }
+
+  @Override
+  public void addResourceHandlers(ResourceHandlerRegistry registry) {
+
+      boolean devMode = this.env.acceptsProfiles("development");
+      String location = devMode ? "file:///" + getProjectRootRequired() + "/client/src/" : "classpath:static/";
+
+      registry.addResourceHandler("/**")
+              .addResourceLocations(location);
+  }
+
+}
+----
+
+Don't forget to set the `resources.projectroot` property:
+
+[source,properties]
+.src/main/resources/application.properties
+----
+resources.projectroot=/home/brian/workspace/resource-handling-workshop/es6/
+----
+
+NOTE: You can set your root folder in `application.properties` or set that property as an env
+variable when running the application (see next code example).
+
+[source]
+----
+SPRING_PROFILES_ACTIVE=development RESOURCES_PROJECTROOT=`pwd` ./gradlew :server:bootRun
+----
+
+You should now be able to run the application and make changes in your JavaScript files at runtime.
+
+TIP: when using Google Chrome, you can use the workspace feature to edit your js files directly within the browser
+devtools.
+
+== Configuring cache busting strategies
+
+If we try to reuse the same resolver strategy as our previous project, this will create issues with our JavaScript
+modules. Indeed, files named like `/app/app-872ca6a9fdda9e2c1516a84cff5c3bc6.js` won't work since our module loader
+looks for a file named `app.js`.
+
+We can configure instead, for those files, a more suitable strategy that uses a folder prefix. This folder prefix
+can be a version string of any kind: a simple version `"v12"`, a production date `"2015-05-22"` or even a git
+hash `"872ca6a9"`.
+
+Update your `WebConfig` class to add the following:
+
+[source,java]
+.src/main/java/workshop/WebConfig.java
+----
+@Configuration
+public class WebConfig extends WebMvcConfigurerAdapter {
+
+  //...
+  @Value("${app.version:}")
+  private String appVersion;
+
+  // return a constant string in development for our debugger and web developer tools
+  private String getApplicationVersion() {
+      return this.env.acceptsProfiles("development") ? "dev" : this.appVersion;
+  }
+
+  @Override
+  public void addResourceHandlers(ResourceHandlerRegistry registry) {
+      boolean devMode = this.env.acceptsProfiles("development");
+      String version = getApplicationVersion();
+      String location = devMode ? "file:///" + getProjectRootRequired() + "/client/src/" : "classpath:static/";
+      boolean useResourceCache = !devMode;
+
+      VersionResourceResolver versionResolver = new VersionResourceResolver()
+              .addFixedVersionStrategy(version, "/**/*.js", "/**/*.map")
+              .addContentVersionStrategy("/**");
+
+      registry.addResourceHandler("/**")
+              .addResourceLocations(location)
+              .resourceChain(useResourceCache)
+              .addResolver(versionResolver);
+  }
+
+}
+----
+
+If we try to run the application right away, URLs wouldn't be rewritten in templates; adding a Filter just like in our
+previous project would not work either. To achieve the same goal, we can use the `ResourceUrlProvider` given by Spring.
+
+This bean is configured by Spring and can be used in our templating engine; here, we're going to define a Handlebars
+helper that we can use in our templates.
+
+[source,java]
+.src/main/java/workshop/WebConfig.java
+----
+@Configuration
+public class WebConfig extends WebMvcConfigurerAdapter {
+
+  //...
+
+  @Bean
+  @Autowired
+  public HandlebarsViewResolver handlebarsViewResolver(ResourceUrlProvider urlProvider) {
+    HandlebarsViewResolver resolver = new HandlebarsViewResolver();
+    resolver.setPrefix("classpath:/templates/");
+    resolver.registerHelper("src", new ResourceUrlHelper(urlProvider));
+    resolver.setCache(!this.env.acceptsProfiles("development"));
+    resolver.setFailOnMissingFile(false);
+    resolver.setAttributesMap(Collections.singletonMap("applicationVersion", getApplicationVersion()));
+    return resolver;
+  }
+
+  class ResourceUrlHelper implements Helper<String> {
+
+    private final ResourceUrlProvider resourceUrlProvider;
+
+    public ResourceUrlHelper(ResourceUrlProvider resourceUrlProvider) {
+      this.resourceUrlProvider = resourceUrlProvider;
+    }
+
+    @Override
+    public CharSequence apply(String context, Options options) throws IOException {
+      // rewrite the given URL using Spring's ResourceUrlProvider
+      return this.resourceUrlProvider.getForLookupPath(context);
+    }
+  }
+
+}
+----
+
+NOTE: we also added the application version string as a view attribute, i.e. a Model attribute that will be added for
+all views. We're going to use this in order to configure System.js to use the application version as a prefix to
+load JavaScript modules.
+
+Update your handlebars template in order to:
+
+* Use the `"src"` helper to rewrite resources URLs
+* use the `applicationVersion` variable to reconfigure System.js for the new URL prefix
+
+[source,handlebars]
+.src/main/resources/templates/index.hbs
+----
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Spring ES6 Application</title>
+    <meta name="description" content="">
+    <meta name="viewport" content="width=device-width">
+
+    <link rel="stylesheet" type="text/css" href="{{src "/css/main.css"}}">
+        <script src="{{src "/lib/system.js"}}"></script>
+    <script src="{{src "/config.js"}}"></script>
+    <script>
+        System.config({baseURL: "/{{applicationVersion}}"});
+        System.import('app/app');
+    </script>
+</head>
+<body>
+<div class="container">
+    <div class="jumbotron">
+        <h1 id="greeting">{insert greeting here}</h1>
+    </div>
+</div>
+</body>
+</html>
+----
+
+
+Run the application in dev mode and check that js URLs are now prefixed:
+
+[source]
+----
+SPRING_PROFILES_ACTIVE=development RESOURCES_PROJECTROOT=`pwd` ./gradlew :server:bootRun
+----
+
+Update your `application.properties` file as well for production mode:
+
+[source,properties]
+.src/main/resources/application.properties
+----
+app.version=de4db33f
+----
+
+Run the application in production mode and check that js URLs are also prefixed:
+
+[source]
+----
+./gradlew :server:bootRun
+----
+
+== Configuring a front-end build toolchain
+
+NOTE: You don't need to actually work on that last step, this is merely a summary of what we could do and how
+we could plug it into our build.
+
+Because HTTP/2 is not there (yet), we'd like to optimize our front-end resources for optimal performances.
+
+We could define our own `gulpfile.js` to describe our build (concatenation, transpilation, minification...)
+and write our distribution in a "dist" folder.
+
+We should now update our build toolchain in order to:
+
+* call this gulp build from our NPM build with a new "build" task
+* create a new "build" gradle task and make it depend on our "install" task
+
+[source,javascript]
+.client/package.json
+----
+  "dependencies": {
+    "jspm": "^0.15.4",
+    "gulp": "^3.8.11",
+    "gulp-util": "^3.0.4",
+    "systemjs-builder": "^0.10.4"
+  },
+  "scripts": {
+    "prepublish": "jspm install",
+    "build": "gulp build"
+  },
+----
+
+[source,groovy]
+.client/build.gradle
+----
+jar {
+    from 'dist'
+    eachFile { details -> details.path = 'static/' + details.path }
+}
+
+task npmBuild(type: NpmTask, dependsOn: npmInstall) {
+    args = ['run', 'build']
+}
+
+jar.dependsOn npmBuild
+----

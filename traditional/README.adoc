@@ -1,0 +1,91 @@
+= Traditional web application
+
+This first part of the workshop aims at demonstrating the current status
+of many web applications and how we can make it better with Spring's
+resource handling feature.
+
+== Create a Spring Boot application
+
+Using the https://start.spring.io[start.spring.io] website, create a Boot
+project and unzip it here.
+You should select at least `web` and `thymeleaf` as dependencies.
+
+You can also create such as project with a single curl command:
+
+[source,bash]
+----
+curl https://start.spring.io/starter.tgz -d dependencies=web,thymeleaf -d type=maven-project | tar -xzvf -
+----
+
+Run this project in your IDE (by running the main method
+in `*Application`), or on the command line `mvn spring-boot:run`.
+
+== Create a home page
+
+Create a Controller that will handle the `"/"` endpoint, like this:
+
+[source,java]
+.src/main/java/demo/web/HomeController.java
+----
+@Controller
+public class HomeController {
+
+  @RequestMapping("/")
+  public String home(Model model) {
+    model.addAttribute("message", "Hello Spring Boot");
+    return "index";
+  }
+}
+----
+
+And a template that will be rendered for this:
+
+[source,html]
+.src/main/resources/templates/index.html
+----
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8"/>
+  <title>Sample Application</title>
+  <!-- Add link to custom stylesheet -->  
+  <!-- Add link to jquery webjar -->  
+</head>
+<body>
+  <h1 th:text="${message}">Title</h1>
+</body>
+</html>
+----
+
+== Improve this home page with CSS and JS
+
+First, disable Thymleaf cache templating (enable this in production!)
+
+[source,properties]
+.src/main/resources/application.properties
+----
+spring.thymeleaf.cache=false
+----
+
+Then add the jquery webjar as a dependency and restart your application.
+
+[source,xml]
+.pom.xml
+----
+<dependency>
+  <groupId>org.webjars</groupId>
+  <artifactId>jquery</artifactId>
+  <version>2.1.3</version>
+</dependency>
+----
+
+You can now edit your `index.html` template without restarting.
+Update your home template in order to:
+
+* import jquery in this page and use it
+* create a new `main.css` file with custom styles and import it
+
+== Developer experience
+
+What's like your current front-end developement experience so far?
+
