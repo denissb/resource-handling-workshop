@@ -30,6 +30,8 @@ repositories {
 
 dependencies {
     compile("org.springframework.boot:spring-boot-starter-web")
+    compile project(':client')
+    compile("com.github.jknack:handlebars-springmvc:2.0.0")
     testCompile("org.springframework.boot:spring-boot-starter-test") 
 }
 
