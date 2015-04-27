@@ -3,8 +3,9 @@
 <head>
     <meta charset="utf-8" />
     <title>AngularJS • TodoMVC</title>
-    <link rel="stylesheet" href="/node_modules/todomvc-common/base.css" />
-    <link rel="stylesheet" href="/node_modules/todomvc-app-css/index.css" />
+    <link rel="stylesheet" th:href="@{/node_modules/todomvc-common/base.css}" />
+    <link rel="stylesheet" th:href="@{/node_modules/todomvc-app-css/index.css}" />
+    <link rel="stylesheet" th:href="@{/css/main.css}" />
     <style>[ng-cloak] { display: none; }</style>
 </head>
 <body ng-app="todomvc">
@@ -63,13 +64,13 @@
         <p>Part of <a href="http://todomvc.com">TodoMVC</a></p>
     </footer>
 </script>
-<script src="/node_modules/todomvc-common/base.js"></script>
-<script src="/node_modules/angular/angular.js"></script>
-<script src="/node_modules/angular-route/angular-route.js"></script>
-<script src="/src/app.js"></script>
-<script src="/src/controllers/todoCtrl.js"></script>
-<script src="/src/services/todoStorage.js"></script>
-<script src="/src/directives/todoFocus.js"></script>
-<script src="/src/directives/todoEscape.js"></script>
+<script th:src="@{/node_modules/todomvc-common/base.js}"></script>
+<script th:src="@{/node_modules/angular/angular.js}"></script>
+<script th:src="@{/node_modules/angular-route/angular-route.js}"></script>
+<script th:src="@{/src/app.js}"></script>
+<script th:src="@{/src/controllers/todoCtrl.js}"></script>
+<script th:src="@{/src/services/todoStorage.js}"></script>
+<script th:src="@{/src/directives/todoFocus.js}"></script>
+<script th:src="@{/src/directives/todoEscape.js}"></script>
 </body>
 </html>
